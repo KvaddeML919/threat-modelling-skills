@@ -76,6 +76,49 @@ Detailed patterns and search queries for each scanning agent. The agent should a
 - Grep: `cors`, `CORS`, `CorsConfiguration`, `@CrossOrigin`, `Access-Control`
 - Grep: `csrf`, `CSRF`, `csrfToken`, `_csrf`, `csurf`
 
+### Find Endpoints — Frontend (Next.js / React / Vue / Svelte)
+
+**Next.js (App Router):**
+- Glob: `**/app/**/page.tsx`, `**/app/**/page.jsx`, `**/app/**/page.ts`
+- Glob: `**/app/**/layout.tsx`, `**/app/**/loading.tsx`, `**/app/**/error.tsx`
+- Glob: `**/app/**/route.ts`, `**/app/**/route.js` (API routes)
+- Grep: `'use server'` (server actions)
+- Grep: `export const runtime` (edge vs nodejs runtime)
+
+**Next.js (Pages Router):**
+- Glob: `**/pages/**/*.tsx`, `**/pages/**/*.jsx`
+- Grep: `getServerSideProps`, `getStaticProps`, `getInitialProps`
+- Glob: `**/pages/api/**` (API routes)
+
+**React Router / Vue Router / SvelteKit:**
+- Grep: `createBrowserRouter`, `createHashRouter`, `Route`, `Routes`
+- Grep: `createRouter`, `defineRoute`
+- Glob: `**/routes/**`, `**/+page.svelte`, `**/+server.ts`
+
+### Find Authentication — Frontend
+
+- Grep: `sessionToken`, `accessToken`, `access_token`, `authToken`, `idToken`
+- Grep: `searchParams.get`, `useSearchParams`, `URLSearchParams` (tokens from URL)
+- Grep: `Bearer`, `Authorization`
+- Grep: `sessionStorage`, `localStorage` (token persistence)
+- Grep: `useSession`, `useAuth`, `signIn`, `signOut` (auth hooks)
+- Grep: `cookie`, `setCookie`, `getCookie`, `js-cookie`, `nookies`
+
+### Find Input Validation — Frontend
+
+- Grep: `searchParams.get`, `useSearchParams`, `router.query` (URL param usage without validation)
+- Grep: `encodeURIComponent`, `decodeURIComponent`, `decodeURI` (encoding presence or absence)
+- Grep: `JSON.parse` (unvalidated parse of external input)
+- Grep: `Base64.decode`, `atob`, `btoa` (encoded data handling)
+
+### Find Security Headers — Frontend
+
+- Grep: `Content-Security-Policy`, `CSP`, `frame-ancestors`, `X-Frame-Options`
+- Grep: `Strict-Transport-Security`, `HSTS`
+- Grep: `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`
+- Grep: `helmet`, `securityHeaders`, `headers()` (in next.config or middleware)
+- Glob: `**/middleware.ts`, `**/middleware.js` (Next.js middleware)
+
 ---
 
 ## Agent 2: External Integrations and Secrets
@@ -131,6 +174,41 @@ Detailed patterns and search queries for each scanning agent. The agent should a
 - Grep: `ssn`, `SSN`, `socialSecurity`, `social_security`
 - Grep: `dateOfBirth`, `date_of_birth`, `dob`
 - Grep: `rawData`, `raw_data`, `includeRawData`
+
+### Find Client-Exposed Env Vars — Frontend
+
+**Next.js:**
+- Grep: `NEXT_PUBLIC_` across all source files (these are inlined into the client bundle)
+- Grep: `NEXT_SERVER_` (should be server-only; verify they aren't in client code)
+
+**Vite:**
+- Grep: `VITE_` (client-exposed), `import.meta.env`
+
+**Create React App:**
+- Grep: `REACT_APP_` (client-exposed)
+
+**General:**
+- Grep: `process.env` in client-side files (may be replaced at build time)
+- Check: are any `_TOKEN`, `_SECRET`, `_KEY`, `_PASSWORD` env vars exposed to the client via public prefix?
+- Glob: `**/.env`, `**/.env.*` — check `.gitignore` covers them
+
+### Find OAuth Flows — Frontend
+
+- Grep: `client_id`, `client_secret`, `redirect_uri`, `response_type`, `authorization_code`
+- Grep: `OAuth`, `oauth`, `openid`, `scope`
+- Grep: `state` parameter usage in OAuth redirects — is it signed, encrypted, or just encoded?
+- Check: does the OAuth `state` carry sensitive data (session tokens, user IDs)?
+- Check: is `client_secret` kept server-side or exposed to the client?
+
+### Find Third-Party SDK Integrations — Frontend
+
+- Grep: `plaid`, `Plaid`, `usePlaidLink`, `react-plaid-link`
+- Grep: `stripe`, `Stripe`, `loadStripe`, `@stripe/stripe-js`
+- Grep: `finicity`, `Finicity`, `Connect.launch`, `connect-web-sdk`
+- Grep: `akoya`, `Akoya`
+- Grep: `firebase`, `Firebase`, `initializeApp`
+- Grep: `auth0`, `Auth0`, `@auth0/auth0-react`
+- Check: how are link tokens / connect URLs obtained? Are secrets kept server-side?
 
 ---
 
@@ -188,6 +266,65 @@ Detailed patterns and search queries for each scanning agent. The agent should a
 - Grep: `MASKING_FIELDS`, `mask`, `redact`, `@JsonIgnore`
 - Grep: logback config `logback.xml`, `logback-spring.xml`, `log4j2.xml`
 - Check: are request/response bodies logged? Do audit tables store tokens?
+
+### Find Client-Side State — Frontend
+
+**Zustand:**
+- Grep: `create(`, `zustand`, `useStore`, `persist`, `createJSONStorage`
+- Check: what data is stored? Is `persist` used with `sessionStorage` or `localStorage`?
+
+**Redux:**
+- Grep: `createStore`, `configureStore`, `createSlice`, `redux-persist`
+- Glob: `**/store/**`, `**/slices/**`, `**/reducers/**`
+
+**MobX / Pinia / Context:**
+- Grep: `makeObservable`, `defineStore`, `createContext`, `useContext`
+
+**General:**
+- Check: are session tokens, user IDs, or PII stored in client state?
+- Check: can store state be accessed from browser DevTools or injected scripts?
+
+### Find Browser Storage — Frontend
+
+- Grep: `localStorage`, `sessionStorage`, `IndexedDB`, `openDatabase`
+- Grep: `window.localStorage`, `window.sessionStorage`
+- Grep: `setItem`, `getItem`, `removeItem` (direct storage API calls)
+- Grep: `createJSONStorage`, `redux-persist` (framework-level persistence)
+- Check: what sensitive data is persisted? Is it encrypted?
+
+### Find postMessage Security — Frontend
+
+- Grep: `postMessage`, `addEventListener.*message`, `window.addEventListener`
+- Grep: `MessageEvent`, `event.origin`, `event.source`, `event.data`
+- Grep: `document.referrer` (used as postMessage target origin)
+- Check: do message listeners validate `event.origin` against an allowlist?
+- Check: is postMessage sent with a specific target origin (not `*`)?
+- Check: is `document.referrer` used to determine parent origin (can be spoofed or absent)?
+
+### Find XSS Vectors — Frontend
+
+- Grep: `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`
+- Grep: `document.write`, `document.writeln`
+- Grep: `eval(`, `new Function(`, `setTimeout` and `setInterval` with string arguments
+- Grep: `v-html` (Vue), `[innerHTML]` (Angular), `{@html` (Svelte)
+- Check: are user inputs or URL params rendered without React/framework escaping?
+- Check: are API responses containing HTML rendered without sanitization?
+
+### Find iframe Security — Frontend
+
+- Grep: `createElement('iframe')`, `<iframe`, `iframe.src`
+- Grep: `sandbox`, `allow=`, `allowfullscreen`
+- Check: are iframes created with `sandbox` attribute restricting capabilities?
+- Check: is the iframe `src` built from trusted sources only?
+- Check: are `X-Frame-Options` or CSP `frame-ancestors` set to prevent clickjacking of the app itself?
+
+### Find Open Redirect Risks — Frontend
+
+- Grep: `window.location`, `window.location.href`, `window.location.replace`
+- Grep: `router.push`, `router.replace`, `navigate(`, `redirect(`
+- Grep: `window.open`
+- Check: are redirect targets hardcoded/allowlisted or derived from user input?
+- Check: does the callback/redirect page validate the target URL?
 
 ---
 
@@ -250,3 +387,53 @@ Flag libraries known to have frequent CVEs or that are very outdated:
 - Grep: `swagger`, `/swagger-ui`, `/api-docs`, `/graphql`, `/graphiql`
 - Grep: `backdoor`, `/debug`, `/admin`, `/internal`, `/qa`, `/test`
 - Check: are these endpoints authenticated? Restricted by profile/environment?
+
+### Find Framework Config — Frontend
+
+**Next.js:**
+- Read `next.config.mjs` or `next.config.js`:
+  - `reactStrictMode` — should be `true`; `false` weakens dev-time safety checks
+  - `headers()` — are security headers (CSP, HSTS, X-Frame-Options) configured?
+  - `removeConsole` — is it enabled for production?
+  - `images.remotePatterns` — are allowed image domains appropriate?
+  - `poweredByHeader` — should be `false` to hide `X-Powered-By: Next.js`
+- Glob: `**/middleware.ts` — does middleware set security headers or validate auth?
+
+**Vite:**
+- Read `vite.config.ts` — `server.proxy`, `define` (env replacement), plugins
+
+**Angular:**
+- Read `angular.json` — `budgets`, `outputHashing`, `sourceMap` (should be false in prod)
+
+### Find Edge/CDN Config — Frontend
+
+**Cloudflare:**
+- Glob: `**/wrangler*.toml`
+- Check: are security headers set in `[env.production.vars]` or via Workers?
+- Check: compatibility flags, pages config
+
+**Vercel:**
+- Read `vercel.json` — `headers`, `rewrites`, `redirects`
+- Check: are security headers configured?
+
+**Netlify:**
+- Read `netlify.toml` — `[[headers]]` blocks
+- Read `_headers` file
+
+### Find ESLint Security Rules — Frontend
+
+- Read `.eslintrc.json` or `.eslintrc.js` or `eslint.config.js`
+- Grep: `eslint-plugin-security`, `no-eval`, `no-implied-eval`, `no-new-func`
+- Check: are security-focused rules enabled?
+
+### Find Dev-Only Flags — Frontend
+
+- Grep: `--inspect` (Node.js debugger, should be dev-only)
+- Grep: `NODE_OPTIONS` in scripts
+- Grep: `sourceMap`, `source-map` in build config (should be disabled in production)
+- Check: are there development-only env vars or flags that could leak into production builds?
+
+### Find Lockfile Issues — Frontend
+
+- Check: are both `package-lock.json` AND `yarn.lock` present? (pick one to avoid drift)
+- Check: is the lockfile committed to the repo?
