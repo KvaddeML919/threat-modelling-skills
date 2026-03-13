@@ -38,8 +38,9 @@ After reading the build file and source structure, classify the repo as one of:
 | **Backend** | REST controllers, database entities, server-only frameworks (Spring Boot, Express API, Django REST, Go HTTP servers) |
 | **Frontend** | React/Next.js/Vue/Angular/Svelte, `src/app/` or `src/pages/` with page components, no database entities, client-side state management (Zustand, Redux, MobX) |
 | **Full-stack** | Both backend endpoints AND frontend pages in the same repo (e.g., Next.js with API routes + pages, Django with templates) |
+| **Mobile BFF** | Backend-for-Frontend pattern serving mobile apps. Indicators: no direct DB access, proxies to multiple backend microservices, mobile-specific headers (`x-device-id`, `x-app-version`, `x-user-agent-mobile`), request signing (HMAC), device/emulator detection, push notification endpoints, payment provisioning (Apple Pay/Google Pay), widget auth, MFA middleware. Typically Express/Fastify with 50+ service clients and generated route schemas. |
 
-This classification determines which patterns each agent should prioritize. Both backend and frontend checklists exist in [scanner-checklists.md](scanner-checklists.md) — agents should use the ones relevant to the detected repo type. Include the repo type classification in each agent prompt.
+This classification determines which patterns each agent should prioritize. Backend, frontend, and mobile BFF checklists exist in [scanner-checklists.md](scanner-checklists.md) — agents should use the ones relevant to the detected repo type. Include the repo type classification in each agent prompt.
 
 ## Step 2: Parallel Scanning
 
@@ -66,6 +67,17 @@ Tell the agent to find:
 - URL query parameter handling — are params validated or used raw?
 - Security headers: CSP, X-Frame-Options, HSTS (in framework config, middleware, or edge config)
 
+**Additional for mobile BFF repos:**
+- Mobile-specific auth middleware: JWT verification, MFA token validation, widget token auth, phone number verification tokens
+- Request signing: HMAC-SHA256 signature check via custom headers (`x-signed-auth`, `x-ml-date`, `x-ml-time`)
+- Endpoints excluded from signature verification
+- Public (pre-auth) endpoints: registration, MFA challenge, push token removal, widget data, device sensors
+- IDOR risks: path parameters like `:userId` not validated against the authenticated user from JWT (`res.locals.userId`)
+- Performance test bypass headers (`x-bypass-authorization`) that skip auth in non-production
+- Device-specific headers: `x-device-id`, `x-app-version`, `x-user-agent-mobile`, `x-is-emulator`, `x-source`
+- Generated route schemas that auto-wire endpoints from config files
+- Rate limiting gaps: public routes that skip rate limiting because there's no userId key
+
 Ask it to return: a table of endpoints/routes, auth mechanisms, validation gaps, and unprotected endpoints.
 
 ### Agent 2: External Integrations and Secrets
@@ -84,6 +96,15 @@ Tell the agent to find:
 - Third-party SDK integrations (Plaid, Stripe, Finicity, Akoya, etc.) — how are link tokens obtained? Are secrets kept server-side?
 - `.gitignore` coverage — are `.env` files (not just `.env*.local`) properly ignored?
 - Hardcoded URLs pointing to internal services or staging environments
+
+**Additional for mobile BFF repos:**
+- How the BFF forwards credentials to backend microservices (custom headers like `X-MoneyLion-User-Id`, API keys, Bearer tokens)
+- Mobile request signing secrets (current + deprecated/rotated secrets)
+- Push notification token handling (Sendbird, FCM, APNs)
+- Payment provisioning credentials (Apple Pay, Google Pay — encrypted pass data, ephemeral keys)
+- Widget JWT issuance — how widget tokens are signed and what data they contain
+- Whether the BFF stores/caches secrets in memory and how rotation works
+- Internal service URLs (HTTP vs HTTPS) and whether service mesh TLS is assumed
 
 Ask it to return: a list of integrations, secrets management approach, encryption status, PII handling patterns, and client-exposed env vars.
 
@@ -110,6 +131,17 @@ Ask it to return: a list of integrations, secrets management approach, encryptio
 
 **For full-stack repos**, combine both checklists.
 
+**For mobile BFF repos**, tell the agent to find:
+- BFF passthrough patterns — how backend responses are transformed (or not) before returning to mobile clients
+- Whether backend error responses are forwarded directly (leaking internal service URLs, stack traces, infrastructure details)
+- SQS/event queue payloads — what data is included (user IDs, tokens, request/response bodies, IP addresses, device IDs)
+- Whether full JWT tokens are persisted in message queues or audit logs
+- PII redaction in logging — which controllers use `sensitiveInfoReplacer` and which don't
+- File upload handling (multer) — size limits, type validation, path traversal on filenames
+- In-memory caching of secrets, config, or user data
+- Redis usage — what's stored (rate limit counters, tokens, session data?), TLS configuration
+- How auth tokens flow: received from mobile → verified → forwarded to backends (is the original JWT re-used or a service token substituted?)
+
 Ask it to return: entity/state inventory with sensitive fields, data flow assessment, XSS/postMessage/iframe findings, storage risks, logging risks.
 
 ### Agent 4: Dependencies, Config, and Infrastructure
@@ -131,6 +163,17 @@ Tell the agent to find:
 - ESLint/linter security rules — is `eslint-plugin-security` or equivalent configured?
 - Dev-only flags — `--inspect`, debug modes, development-only env vars leaking into production builds
 - Dual lockfiles — both `package-lock.json` and `yarn.lock` present (dependency drift risk)
+
+**Additional for mobile BFF repos:**
+- Express-level security: `helmet`, body size limits on `express.json()` and `urlencoded()`, server request timeouts
+- `trust proxy` configuration and `x-powered-by` header
+- Mobile-specific timeouts: network handshake timeout, server response timeout, per-service overrides
+- Datadog/APM tracing configuration (`dd-trace`) — does it capture sensitive data?
+- Dual lockfile check (package-lock.json + yarn.lock)
+- Docker: base image pinning, non-root user, init process (tini), multi-stage build
+- CI/CD: staging auto-deploy on push to master (no approval gate?), secrets in workflows, OIDC for AWS
+- Generated code: are generated route schemas validated or trusted blindly?
+- TypeScript strict mode, `noImplicitAny`, ESLint security rules
 
 Ask it to return: dependency table with version concerns, config issues, infra findings, error handling assessment.
 

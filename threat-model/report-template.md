@@ -13,7 +13,7 @@ Use this exact structure when outputting the report. Fill in every section with 
 
 **Repository:** [repo name]
 **Tech Stack:** [language, framework, build tool, runtime version]
-**Repo Type:** [Backend / Frontend / Full-stack]
+**Repo Type:** [Backend / Frontend / Full-stack / Mobile BFF]
 **Purpose:** [1-2 sentence description from README or code analysis]
 **Deployment:** [Docker/K8s/Lambda/EC2/Cloudflare Pages/Vercel/Netlify/unknown — from Dockerfile, k8s manifests, CI config, edge config]
 
@@ -25,6 +25,7 @@ Use this exact structure when outputting the report. Fill in every section with 
 
 For backend: include external clients, the application, databases, caches, message queues, external APIs.
 For frontend: include parent app/SDK, the frontend app, browser storage, external APIs, third-party SDKs (Plaid, Stripe, etc.), OAuth providers.
+For mobile BFF: include mobile clients (iOS/Android/widgets), the BFF layer (with middleware stack), backend microservices, infrastructure (Redis, SQS, Secrets Manager), and external services.
 Mark trust boundaries clearly.]
 
 **Trust boundaries:**
@@ -35,6 +36,12 @@ Mark trust boundaries clearly.]
 [For frontend repos, also include:]
 4. [Parent app → Iframe (postMessage boundary)]
 5. [Browser → sessionStorage/localStorage (client-side storage boundary)]
+
+[For mobile BFF repos, also include:]
+4. [Mobile client → BFF (HMAC request signing boundary)]
+5. [BFF → Backend microservices (service-to-service credential boundary)]
+6. [iOS Widget → BFF (widget JWT boundary)]
+7. [BFF → Event queues/SQS (data persistence boundary)]
 
 ---
 
@@ -118,6 +125,22 @@ Conclude with overall assessment.]
 | Open redirects | [Risk/Safe/N/A] | [details] |
 | Browser storage of sensitive data | [Yes (risk)/No] | [details] |
 
+**For mobile BFF repos — BFF Security:**
+[Assess the following areas.]
+
+| Area | Status | Details |
+|------|--------|---------|
+| IDOR (userId path param vs token) | [Risk/Safe] | [which endpoints validate, which don't] |
+| Request signing (HMAC) coverage | [Full/Partial/Missing] | [excluded endpoints, deprecated secrets] |
+| Public endpoint rate limiting | [Present/Missing] | [IP-based fallback when no userId?] |
+| File upload validation | [Present/Partial/Missing] | [size limits, type checks, filename sanitization] |
+| Backend error passthrough | [Sanitized/Forwarded] | [are upstream errors returned to mobile clients?] |
+| Token persistence in queues | [Safe/Risk] | [are JWTs stored in SQS/Kafka payloads?] |
+| PII redaction consistency | [Consistent/Partial] | [which controllers use the replacer, which don't?] |
+| Path traversal protection | [All envs/Non-prod only/Missing] | [details] |
+| Security headers (helmet) | [Present/Missing] | [CSP, HSTS, X-Content-Type-Options] |
+| Auth bypass mechanisms | [None/Env-guarded/Risk] | [performance test headers, debug flags] |
+
 ---
 
 ## 7. Encryption Assessment
@@ -131,6 +154,10 @@ Conclude with overall assessment.]
 | At rest — sensitive fields | [Yes/No/Partial] | [KMS, AES, application-level, etc.] |
 | At rest — tokens/credentials | [Yes/No/Partial] | [encrypted or plain text] |
 | At rest — browser storage | [Yes/No/Partial/N/A] | [sessionStorage, localStorage — encrypted or cleartext] |
+| In transit — BFF to backend services | [Yes/No/Partial/N/A] | [HTTPS, service mesh TLS, plain HTTP] |
+| In transit — Redis/cache | [Yes/No/Partial/N/A] | [TLS configured in client, ElastiCache in-transit encryption] |
+| Mobile request signing | [Yes/No/Partial/N/A] | [HMAC-SHA256, which headers are signed, excluded endpoints] |
+| At rest — event queue payloads | [Yes/No/Partial/N/A] | [SQS/Kafka encryption, are JWTs or PII in payloads?] |
 
 ---
 
@@ -174,4 +201,4 @@ Conclude with overall assessment.]
 5. **Mermaid diagrams** — use them for architecture. Keep node names in camelCase (no spaces).
 6. **Severity consistency** — apply the severity criteria from SKILL.md uniformly.
 7. **No false positives** — only report findings you can substantiate with evidence from the code.
-8. **Adapt by repo type** — for frontend repos, Section 6 (SQL Injection) may be N/A; fill the Client-Side Security table instead. For backend repos, the browser storage and iframe/postMessage rows in Section 7 will be N/A. Skip sections that genuinely don't apply rather than forcing findings.
+8. **Adapt by repo type** — for frontend repos, Section 6 (SQL Injection) may be N/A; fill the Client-Side Security table instead. For backend repos, the browser storage and iframe/postMessage rows in Section 7 will be N/A. For mobile BFF repos, SQL Injection and Client-Side Security are typically N/A; fill the BFF Security table in Section 6 and the BFF-specific rows in Section 7. Skip sections that genuinely don't apply rather than forcing findings.

@@ -111,6 +111,66 @@ Detailed patterns and search queries for each scanning agent. The agent should a
 - Grep: `JSON.parse` (unvalidated parse of external input)
 - Grep: `Base64.decode`, `atob`, `btoa` (encoded data handling)
 
+### Find Endpoints — Mobile BFF
+
+**Route registration:**
+- Read the main Express/Fastify app file (e.g. `express.ts`, `app.ts`) — find all `app.use()`, `expressApp.use()`, router mounts
+- Glob: `**/controllers/**`, `**/*Controller.ts`, `**/*Controller.js`
+- Grep: `router.get`, `router.post`, `router.put`, `router.delete`, `router.patch`
+- Glob: `**/_generated/**`, `**/*.g.ts`, `**/*.g.js` — generated route schemas
+- Check: generated schemas that auto-register endpoints from config (prefix, version, urls per env, endpoints array)
+
+**Public / pre-auth endpoints:**
+- Grep: `publicRoutes`, `PUBLIC_ROUTES`, `skipAuth`, `noAuth`
+- Check: which endpoints skip JWT verification (registration, MFA challenge, push token cleanup, widget data, device sensors, affiliate/bidding callbacks)
+- These are high-value targets — they bypass primary authentication
+
+**IDOR (Insecure Direct Object Reference):**
+- Grep: `req.params.userId`, `req.params.id` — where path params are used
+- Grep: `res.locals.userId`, `req.userId` — where the authenticated user ID is available
+- Check: are `req.params.userId` and `res.locals.userId` compared? If not, any authenticated user can access another user's data
+- Check: does the generated controller code force `req.params.userId = res.locals.userId`? If so, which routes use this pattern and which don't?
+
+### Find Authentication — Mobile BFF
+
+**JWT verification:**
+- Grep: `jwt.verify`, `jwt.sign`, `jsonwebtoken`, `express-auth`, `express-jwt`
+- Find the main auth middleware — what library is used, what fields are set on `res.locals` or `req`
+- Check: which token fields are extracted (userId, tokenSessionId, accessToken, roles, scopes)
+
+**MFA middleware:**
+- Grep: `mfa`, `MFA`, `mfaMiddleware`, `mfaToken`, `mfaSessionId`
+- Check: MFA token subject validation, session ID matching, event type validation
+- Check: does the MFA rejection response properly send a body (`.send()` / `.sendStatus()`) or just set status?
+
+**Widget authentication:**
+- Grep: `widget`, `WIDGET_TOKEN`, `widgetMiddleware`
+- Check: widget JWT issuance endpoint, token subject, expiry, what data is in the payload
+
+**Phone verification tokens:**
+- Grep: `verifyPhoneNumber`, `phoneNumberJwt`, `VERIFY_PHONE_NUMBER_TOKEN`
+- Check: what fields are validated (verifySessionId, phoneNumber, userId, eventType)
+
+**Request signing (HMAC):**
+- Grep: `x-signed-auth`, `HMAC`, `sha256`, `sha.js`, `crypto`
+- Read the signature middleware fully — understand the canonical request format
+- Check: what headers are included in the signature (method, path, query, body hash, device headers)
+- Check: which endpoints are EXCLUDED from signature verification
+- Check: is there a deprecated/legacy signing secret still accepted?
+
+**Auth bypass:**
+- Grep: `bypass`, `x-bypass-authorization`, `shouldBypass`, `performanceTest`
+- Check: is auth bypass guarded by environment (production vs staging)?
+- Check: can the bypass header be sent from outside the VPC?
+
+### Find Rate Limiting — Mobile BFF
+
+- Read the rate limiter middleware
+- Check: key function — is it per-user (`userId`), per-IP, or per-device (`deviceId`)?
+- Check: what happens when no key is available (e.g. public routes with no userId) — are these routes unprotected?
+- Check: rate limit values (window, max requests) and whether they're appropriate
+- Check: is rate limiting enabled by default or behind a feature flag?
+
 ### Find Security Headers — Frontend
 
 - Grep: `Content-Security-Policy`, `CSP`, `frame-ancestors`, `X-Frame-Options`
@@ -192,6 +252,37 @@ Detailed patterns and search queries for each scanning agent. The agent should a
 - Check: are any `_TOKEN`, `_SECRET`, `_KEY`, `_PASSWORD` env vars exposed to the client via public prefix?
 - Glob: `**/.env`, `**/.env.*` — check `.gitignore` covers them
 
+### Find Mobile BFF Credential Forwarding
+
+**Backend service clients:**
+- Glob: `**/services/**`, `**/*API.ts`, `**/*Api.ts`, `**/*Service.ts`
+- Grep: `axios.create`, `axios.get`, `axios.post`, `axios.put`, `axios.delete`
+- Check: how are credentials forwarded to backend services?
+  - Custom headers (`X-MoneyLion-User-Id`, `X-API-KEY`, `Authorization`)
+  - Is the original user JWT re-sent, or is a service-to-service token used?
+  - Are backend URLs hardcoded per environment or configurable?
+
+**Internal vs external service URLs:**
+- Grep: `http://` in service files (internal mesh services often use plain HTTP)
+- Grep: `https://` (external-facing services)
+- Check: are internal HTTP calls protected by service mesh TLS (Istio, Linkerd)?
+- Check: do staging/dev URLs point to production services accidentally?
+
+**Push notification tokens:**
+- Grep: `push-notification`, `pushToken`, `push_token`, `fcm`, `apns`, `sendbird`
+- Check: how are push tokens registered and removed
+- Check: is token removal a public endpoint (for logout flows)?
+
+**Payment provisioning:**
+- Grep: `apple-pay`, `google-pay`, `push-provisioning`, `encryptedPassData`, `ephemeralPublicKey`
+- Check: are payment provisioning tokens handled as passthrough or processed by the BFF?
+- Check: are Apple/Google Pay activation data cached or logged?
+
+**Widget JWT issuance:**
+- Grep: `widget/token`, `WIDGET_TOKEN`, `widgetJwt`
+- Check: what data goes into the widget JWT payload (userId, scopes, expiry)
+- Check: are widget endpoints properly scoped to read-only operations?
+
 ### Find OAuth Flows — Frontend
 
 - Grep: `client_id`, `client_secret`, `redirect_uri`, `response_type`, `authorization_code`
@@ -233,6 +324,38 @@ Detailed patterns and search queries for each scanning agent. The agent should a
 **SQLAlchemy (Python):**
 - Grep: `Base = declarative_base`, `Column(`, `relationship(`
 
+### Find BFF Passthrough Risks — Mobile BFF
+
+**Error response forwarding:**
+- Grep: `error.response.data`, `error.data`, `error.status`
+- Grep: `res.status(error`, `res.json(error`
+- Check: are backend error responses forwarded directly to mobile clients?
+- Check: could backend errors leak internal service URLs, stack traces, infrastructure details?
+- Check: is there a global error handler that sanitizes responses for production?
+
+**SQS / event queue data flow:**
+- Grep: `SQS`, `sendMessage`, `UserTransaction`, `eventQueue`
+- Read the transaction/event middleware fully
+- Check payload fields:
+  - `tokenId` / `token` — is the full JWT persisted? (high-severity if so)
+  - `userId`, `tokenSessionId` — user identifiers
+  - `headers` — is `authorization` stripped? What about other sensitive headers (`x-device-id`, `x-signed-auth`)?
+  - `req` / `resp` body — are these redacted before sending?
+  - `ip`, `userAgent`, `deviceId` — PII fields
+- Find the whitelist of endpoints that trigger event messages
+
+**Token flow through BFF:**
+- Trace: mobile sends Bearer JWT → middleware verifies → `res.locals` populated → controllers call services
+- Check: do any service calls re-send the user's JWT as `Authorization: Bearer ${token}`?
+- Check: are service-to-service calls authenticated separately from user tokens?
+
+**File upload passthrough:**
+- Grep: `multer`, `upload`, `multipart`, `FormData`, `formData`
+- Check: file size limits per endpoint
+- Check: file type / mimetype validation
+- Check: filename sanitization (path traversal in uploaded filenames)
+- Check: are uploaded files streamed to backend services or buffered in BFF memory?
+
 ### Find SQL Injection Risks
 
 - Grep: `nativeQuery\s*=\s*true`, `@Query.*nativeQuery`
@@ -266,6 +389,18 @@ Detailed patterns and search queries for each scanning agent. The agent should a
 - Grep: `MASKING_FIELDS`, `mask`, `redact`, `@JsonIgnore`
 - Grep: logback config `logback.xml`, `logback-spring.xml`, `log4j2.xml`
 - Check: are request/response bodies logged? Do audit tables store tokens?
+
+### Find Logging Risks — Mobile BFF
+
+- Grep: `sensitiveInfoReplacer`, `SENSITIVE`, `BLACKLIST`, `redact`
+- Read the redaction utility fully — what fields are blacklisted?
+- Grep: `JSON.stringify(error` — find all error serialization without the replacer function
+- Check: are ALL controllers using the replacer when logging error data?
+- Check: does the PII blacklist cover all relevant fields? Common gaps:
+  - `dateOfBirth`, `dob`, `routingNumber`, `address`, `street`, `zipCode`, `city`, `state`
+- Check: does the signature middleware log request bodies without redaction?
+- Check: are SQS error callbacks (`console.log('SQS Error:', err)`) including sensitive data?
+- Grep: `stringifyBody`, `stringifyQuery` — custom serializers that may bypass redaction
 
 ### Find Client-Side State — Frontend
 
@@ -380,6 +515,29 @@ Flag libraries known to have frequent CVEs or that are very outdated:
 - Grep: `getLocalizedMessage`, `getMessage`, `getStackTrace`, `printStackTrace`
 - Grep: `errorHandler`, `error middleware`, `catch(`, `except`
 - Check: do error responses expose internal details (SQL errors, stack traces, file paths)?
+
+### Find Mobile BFF Security Config
+
+**Express-level security:**
+- Grep: `helmet`, `hpp`, `csp`, `contentSecurityPolicy` — are security header middlewares present?
+- Grep: `express.json`, `express.urlencoded` — are body size `limit` options set?
+- Grep: `trust proxy` — is `trust proxy` enabled? (needed for correct `req.ip` behind load balancers)
+- Grep: `x-powered-by` — is it disabled?
+- Grep: `server.timeout`, `server.requestTimeout`, `server.keepAliveTimeout` — are server-level timeouts set?
+
+**Timeout configuration:**
+- Grep: `NETWORK_SERVER_TIMEOUT`, `NETWORK_HANDSHAKE_TIMEOUT`, `timeout`
+- Check: default timeout values and per-service overrides
+- Check: are there endpoints with very long timeouts that could be abused?
+
+**APM / tracing:**
+- Grep: `dd-trace`, `datadog`, `newrelic`, `opentelemetry`, `apm`
+- Check: does tracing capture request/response bodies? Are sensitive headers excluded from traces?
+
+**Generated routes:**
+- Glob: `**/_generated/**`, `**/*.g.ts`
+- Check: are generated route schemas treated as trusted? Is there validation on the generated config?
+- Check: do generated routes properly set userId from token (e.g. `req.params.userId = res.locals.userId`)?
 
 ### Find Admin/Debug Endpoints
 
