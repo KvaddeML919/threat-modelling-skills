@@ -19,7 +19,38 @@ Use this exact structure when outputting the report. Fill in every section with 
 
 ---
 
-## 2. Architecture and Data Flow
+## 2. Attack Surface Summary
+
+| Metric | Count |
+|--------|-------|
+| Total endpoints / routes | [number] |
+| Public (unauthenticated) endpoints | [number] |
+| Auth-protected endpoints | [number] |
+| External integrations | [number] |
+| Sensitive data stores | [number — DB tables, caches, browser storage, queues holding PII/tokens] |
+
+[For frontend repos, also include:]
+
+| Metric | Count |
+|--------|-------|
+| Pages / routes | [number] |
+| Server actions / API routes | [number] |
+| Third-party SDKs | [number] |
+| postMessage interfaces | [number] |
+| iframes | [number] |
+
+[For mobile BFF repos, also include:]
+
+| Metric | Count |
+|--------|-------|
+| Public (pre-auth) endpoints | [number] |
+| Generated route endpoints | [number] |
+| Backend service clients | [number] |
+| Endpoints excluded from HMAC signing | [number] |
+
+---
+
+## 3. Architecture and Data Flow
 
 [Insert a mermaid diagram showing the main components, trust boundaries, and data flows.
 
@@ -45,9 +76,9 @@ Mark trust boundaries clearly.]
 
 ---
 
-## 3. Threat Analysis (STRIDE)
+## 4. Threat Analysis (STRIDE)
 
-### 3.1 Spoofing (Identity)
+### 4.1 Spoofing (Identity)
 
 | ID | Threat | Severity | Details |
 |----|--------|----------|---------|
@@ -55,31 +86,31 @@ Mark trust boundaries clearly.]
 
 [Repeat for each finding. If none found, state "No spoofing threats identified."]
 
-### 3.2 Tampering
+### 4.2 Tampering
 
 | ID | Threat | Severity | Details |
 |----|--------|----------|---------|
 | T-1 | [threat description] | [severity] | [details] |
 
-### 3.3 Repudiation
+### 4.3 Repudiation
 
 | ID | Threat | Severity | Details |
 |----|--------|----------|---------|
 | R-1 | [threat description] | [severity] | [details] |
 
-### 3.4 Information Disclosure
+### 4.4 Information Disclosure
 
 | ID | Threat | Severity | Details |
 |----|--------|----------|---------|
 | I-1 | [threat description] | [severity] | [details] |
 
-### 3.5 Denial of Service
+### 4.5 Denial of Service
 
 | ID | Threat | Severity | Details |
 |----|--------|----------|---------|
 | D-1 | [threat description] | [severity] | [details] |
 
-### 3.6 Elevation of Privilege
+### 4.6 Elevation of Privilege
 
 | ID | Threat | Severity | Details |
 |----|--------|----------|---------|
@@ -87,7 +118,7 @@ Mark trust boundaries clearly.]
 
 ---
 
-## 4. Vulnerable Dependencies
+## 5. Vulnerable Dependencies
 
 | Dependency | Current Version | Known CVE / Concern | Severity | Recommendation |
 |------------|----------------|---------------------|----------|----------------|
@@ -97,7 +128,7 @@ Mark trust boundaries clearly.]
 
 ---
 
-## 5. Sensitive Data Inventory
+## 6. Sensitive Data Inventory
 
 | Data Type | Storage Location | Protection | Gap |
 |-----------|-----------------|------------|-----|
@@ -105,7 +136,7 @@ Mark trust boundaries clearly.]
 
 ---
 
-## 6. Injection and Client-Side Security Assessment
+## 7. Injection and Client-Side Security Assessment
 
 **For backend repos — SQL Injection:**
 [State whether raw SQL or native queries were found.
@@ -143,7 +174,7 @@ Conclude with overall assessment.]
 
 ---
 
-## 7. Encryption Assessment
+## 8. Encryption Assessment
 
 | Layer | Status | Details |
 |-------|--------|---------|
@@ -161,7 +192,7 @@ Conclude with overall assessment.]
 
 ---
 
-## 8. Prioritized Recommendations
+## 9. Prioritized Recommendations
 
 ### Critical
 
@@ -201,4 +232,4 @@ Conclude with overall assessment.]
 5. **Mermaid diagrams** — use them for architecture. Keep node names in camelCase (no spaces).
 6. **Severity consistency** — apply the severity criteria from SKILL.md uniformly.
 7. **No false positives** — only report findings you can substantiate with evidence from the code.
-8. **Adapt by repo type** — for frontend repos, Section 6 (SQL Injection) may be N/A; fill the Client-Side Security table instead. For backend repos, the browser storage and iframe/postMessage rows in Section 7 will be N/A. For mobile BFF repos, SQL Injection and Client-Side Security are typically N/A; fill the BFF Security table in Section 6 and the BFF-specific rows in Section 7. Skip sections that genuinely don't apply rather than forcing findings.
+8. **Adapt by repo type** — for frontend repos, Section 7 (SQL Injection) may be N/A; fill the Client-Side Security table instead. For backend repos, the browser storage and iframe/postMessage rows in Section 8 will be N/A. For mobile BFF repos, SQL Injection and Client-Side Security are typically N/A; fill the BFF Security table in Section 7 and the BFF-specific rows in Section 8. Skip sections that genuinely don't apply rather than forcing findings.

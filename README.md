@@ -11,19 +11,35 @@ A Cursor Agent Skill that scans any open repository and generates a comprehensiv
 
 ## Installation
 
-Copy the `threat-model/` directory to your Cursor skills folder:
+### Personal (all projects)
+
+Copy the `threat-model/` directory to your personal Cursor skills folder:
 
 ```bash
 cp -r threat-model/ ~/.cursor/skills/threat-model/
+```
+
+### Project (shared with team via repo)
+
+Copy into the project's `.cursor/skills/` directory and commit:
+
+```bash
+cp -r threat-model/ .cursor/skills/threat-model/
+git add .cursor/skills/threat-model/
+git commit -m "Add threat model skill"
 ```
 
 ## Skill Structure
 
 ```
 threat-model/
-  SKILL.md                  # Core instructions (discovery, scanning, classification)
-  report-template.md        # Output format template (STRIDE tables, recommendations)
-  scanner-checklists.md     # Framework-specific search patterns (Spring Boot, Node.js, Python, Go)
+  SKILL.md                            # Core instructions (discovery, scanning, classification)
+  report-template.md                  # Output format template (STRIDE tables, recommendations)
+  checklists/
+    api-surface.md                    # Agent 1: endpoints, auth, input validation, SSRF
+    integrations-secrets.md           # Agent 2: external clients, credentials, encryption, PII
+    persistence-data-flow.md          # Agent 3: DB entities, data flow, deserialization, XSS
+    dependencies-infra.md             # Agent 4: dependencies, config, Docker, CI/CD
 ```
 
 ## What It Scans

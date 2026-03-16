@@ -1,6 +1,7 @@
 ---
 name: threat-model
-description: Scan the currently open repository and generate a comprehensive STRIDE-based threat model report. Use when the user asks to generate a threat model, scan for security threats, perform a threat assessment, or review the security posture of a codebase.
+version: 1.1.0
+description: Scan the currently open repository and generate a comprehensive STRIDE-based threat model report. Use when the user asks to generate a threat model, scan for security threats, perform a threat assessment, conduct a security audit, review the security posture of a codebase, identify vulnerabilities, or do a vulnerability assessment.
 ---
 
 # Threat Model Generator
@@ -40,7 +41,20 @@ After reading the build file and source structure, classify the repo as one of:
 | **Full-stack** | Both backend endpoints AND frontend pages in the same repo (e.g., Next.js with API routes + pages, Django with templates) |
 | **Mobile BFF** | Backend-for-Frontend pattern serving mobile apps. Indicators: no direct DB access, proxies to multiple backend microservices, mobile-specific headers (`x-device-id`, `x-app-version`, `x-user-agent-mobile`), request signing (HMAC), device/emulator detection, push notification endpoints, payment provisioning (Apple Pay/Google Pay), widget auth, MFA middleware. Typically Express/Fastify with 50+ service clients and generated route schemas. |
 
-This classification determines which patterns each agent should prioritize. Backend, frontend, and mobile BFF checklists exist in [scanner-checklists.md](scanner-checklists.md) — agents should use the ones relevant to the detected repo type. Include the repo type classification in each agent prompt.
+This classification determines which patterns each agent should prioritize. Backend, frontend, and mobile BFF checklists exist in the `checklists/` directory — agents should use the patterns relevant to the detected repo type. Include the repo type classification in each agent prompt.
+
+### Unsupported or partially supported stacks
+
+The scanning checklists are optimized for **Java/Spring Boot, Node.js/Express, Python (Django/Flask/FastAPI), and Go**. The following stacks are detected but have limited or no specific scanning patterns — agents should adapt heuristically using general patterns:
+
+| Stack | Coverage |
+|-------|----------|
+| **C# / ASP.NET Core** | Partial — dependency scanning only. Agents should look for `[Authorize]`, `[AllowAnonymous]`, `IActionFilter`, `Startup.cs`, `Program.cs` |
+| **Ruby on Rails** | Partial — build file detection only. Agents should look for `before_action`, `authenticate_user!`, `params.permit`, `raw`, `html_safe` |
+| **Rust (Actix/Axum)** | Partial — build file detection only. Agents should look for `#[get]`, `#[post]`, `web::Json`, `extractors`, `middleware` |
+| **GraphQL** | Mentioned but not deep. Agents should check: introspection enabled in production, query depth/complexity limits, batching attack surface, authorization per resolver |
+| **gRPC** | Not covered. Agents should look for `.proto` files, `grpc.ServerInterceptor`, TLS config, auth metadata propagation |
+| **WebSocket** | Not covered. Agents should look for `ws://`, `wss://`, `WebSocket`, `socket.io`, origin validation on upgrade, message authentication |
 
 ## Step 2: Parallel Scanning
 
@@ -78,7 +92,9 @@ Tell the agent to find:
 - Generated route schemas that auto-wire endpoints from config files
 - Rate limiting gaps: public routes that skip rate limiting because there's no userId key
 
-Ask it to return: a table of endpoints/routes, auth mechanisms, validation gaps, and unprotected endpoints.
+Provide the agent with the checklist from [checklists/api-surface.md](checklists/api-surface.md).
+
+Ask it to return: a table of endpoints/routes, auth mechanisms, validation gaps, SSRF vectors, and unprotected endpoints.
 
 ### Agent 2: External Integrations and Secrets
 
@@ -105,6 +121,8 @@ Tell the agent to find:
 - Widget JWT issuance — how widget tokens are signed and what data they contain
 - Whether the BFF stores/caches secrets in memory and how rotation works
 - Internal service URLs (HTTP vs HTTPS) and whether service mesh TLS is assumed
+
+Provide the agent with the checklist from [checklists/integrations-secrets.md](checklists/integrations-secrets.md).
 
 Ask it to return: a list of integrations, secrets management approach, encryption status, PII handling patterns, and client-exposed env vars.
 
@@ -142,7 +160,9 @@ Ask it to return: a list of integrations, secrets management approach, encryptio
 - Redis usage — what's stored (rate limit counters, tokens, session data?), TLS configuration
 - How auth tokens flow: received from mobile → verified → forwarded to backends (is the original JWT re-used or a service token substituted?)
 
-Ask it to return: entity/state inventory with sensitive fields, data flow assessment, XSS/postMessage/iframe findings, storage risks, logging risks.
+Provide the agent with the checklist from [checklists/persistence-data-flow.md](checklists/persistence-data-flow.md).
+
+Ask it to return: entity/state inventory with sensitive fields, data flow assessment, deserialization risks, XSS/postMessage/iframe findings, storage risks, logging risks.
 
 ### Agent 4: Dependencies, Config, and Infrastructure
 
@@ -175,11 +195,23 @@ Tell the agent to find:
 - Generated code: are generated route schemas validated or trusted blindly?
 - TypeScript strict mode, `noImplicitAny`, ESLint security rules
 
-Ask it to return: dependency table with version concerns, config issues, infra findings, error handling assessment.
+Provide the agent with the checklist from [checklists/dependencies-infra.md](checklists/dependencies-infra.md).
+
+Ask it to return: dependency table with version concerns, unsafe deserialization libraries, config issues, infra findings, error handling assessment.
+
+## Evidence Standards
+
+Before classifying findings, apply these evidence standards to filter agent results:
+
+1. **Pattern match ≠ finding.** A grep hit (e.g. `localStorage`, `eval`, `pickle`) is not automatically a vulnerability. Trace what data flows into the flagged pattern — report it only if the data is sensitive or user-controlled.
+2. **Require supporting evidence.** Every reported finding must cite at least one specific file path and describe the data flow or misconfiguration. "Rate limiting might be missing" is not a finding; "No rate limiter middleware found on `POST /api/transfer` in `routes/transfer.ts`" is.
+3. **Distinguish missing vs. not applicable.** If a pattern (e.g., CSRF protection) isn't found, consider whether the architecture requires it. SPAs using Bearer tokens in headers don't need CSRF tokens — don't flag their absence.
+4. **When uncertain, classify as LOW** with a note to verify manually rather than inflating severity.
+5. **No invented threats.** If a STRIDE category has zero substantiated findings, state that clearly. Do not fabricate theoretical threats to fill the table.
 
 ## Step 3: Classify Findings
 
-After all 4 agents return, classify every finding using STRIDE:
+After all 4 agents return, apply the evidence standards above, then classify every finding using STRIDE:
 
 | Category | Question |
 |----------|----------|
@@ -209,4 +241,20 @@ For the recommendations section, sort by severity (Critical first) and provide a
 
 ## Detailed Scanning Checklists
 
-For the complete list of patterns, file names, and grep queries each agent should use, see [scanner-checklists.md](scanner-checklists.md).
+Each agent has a dedicated checklist with framework-specific patterns, file names, and grep queries:
+
+| Agent | Checklist |
+|-------|-----------|
+| Agent 1: API Surface & Auth | [checklists/api-surface.md](checklists/api-surface.md) |
+| Agent 2: Integrations & Secrets | [checklists/integrations-secrets.md](checklists/integrations-secrets.md) |
+| Agent 3: Persistence & Data Flow | [checklists/persistence-data-flow.md](checklists/persistence-data-flow.md) |
+| Agent 4: Dependencies & Infra | [checklists/dependencies-infra.md](checklists/dependencies-infra.md) |
+
+---
+
+## Changelog
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.1.0 | 2026-03-16 | Split scanner-checklists.md into per-agent files. Added SSRF and deserialization patterns. Added evidence standards. Noted unsupported stack coverage. Added attack surface summary to report template. |
+| 1.0.0 | — | Initial release with STRIDE-based scanning for backend, frontend, full-stack, and mobile BFF repos. |
